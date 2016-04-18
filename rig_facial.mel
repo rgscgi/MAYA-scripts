@@ -1,0 +1,43 @@
+
+ proc cv_loc_drv_generate( string $cv_name , string $struct_name )
+ {
+    int $cv_degree = `getAttr ($cv_name+".degree")`;
+    int $cv_spans = `getAttr ($cv_name+".spans")`;
+    string $jnt_sking_string = " ";
+    group -em -n ( "grp_"+$struct_name);
+    int $lc_number = 3;
+//**********************   Create Locator struct with joint driver  *************************************************
+  for( $i=0.0 ; $i <= ( $lc_number - 1 ); $i++ )
+    {
+      spaceLocator -p 0 0 0 -n ("loc_"+$struct_name+"_"+$i) ;
+      
+      if( ! ( `objExists ( "grp_loc_"+$struct_name ) `))
+        group -em -n ( "grp_loc_"+$struct_name )  ;
+        
+      parent ("loc_"+$struct_name+"_"+$i) ("grp_loc_"+$struct_name);
+      string $path_name = `pathAnimation -fractionMode true -n ("mpth_"+$cv_name+"_"+$i) -c $cv_name ("loc_"+$struct_name+"_"+$i)`;
+      joint -p  0 0 0 -n ("jnt_skin_"+$struct_name+"_"+$i);
+      setAttr ("jnt_skin_"+$struct_name+"_"+$i+".t") 0 0 0;
+      cutKey -cl -t ":" -f ":" -at "u" $path_name;
+      setAttr ($path_name+".u") ( (1.0/ ( $lc_number - 1 ) )*$i); 
+      select -cl; 
+      int $mod = ( $cv_degree + $cv_spans )/ $lc_number ;
+      vector $lc_pivot_t = `getAttr ("loc_"+$struct_name+"_"+$i+".t")`; 
+      $jnt_sking_string +=(`joint -p  0 0 0 -n ("jnt_drv_"+$struct_name+"_"+$i)`)+" ";   
+      group -n ("grp_jnt_drv_"+$struct_name+"_"+$i) ("jnt_drv_"+$struct_name+"_"+$i);
+      parent ("grp_jnt_drv_"+$struct_name+"_"+$i) ( "grp_"+$struct_name); 
+      setAttr ("grp_jnt_drv_"+$struct_name+"_"+$i+".t" ) ($lc_pivot_t.x) ($lc_pivot_t.y) ($lc_pivot_t.z);           
+      orientConstraint -mo -weight 1 ("jnt_drv_"+$struct_name+"_"+$i) ("jnt_skin_"+$struct_name+"_"+$i);
+      /*if($i!=0)
+       aimConstraint -mo -weight 1 -aimVector 1 0 0 -upVector 0 1 0 -worldUpType "vector" -worldUpVector 0 1 0 ("loc_"+$struct_name+"_"+$i) ("jnt_skin_"+$struct_name+"_"+($i-1));  
+      */
+     }
+     
+    parent ( "grp_loc_"+$struct_name ) ( "grp_"+$struct_name); 
+    eval( "skinCluster -bm 0 -nw 1  "+$cv_name+" "+$jnt_sking_string+";" );
+     
+}  
+
+ string $cv_names[] = `ls -sl`;   
+ 
+ cv_loc_drv_generate( $cv_names[0] , "cheek_outer_left");
