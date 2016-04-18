@@ -1,0 +1,18 @@
+//yellow 17
+//red  13
+//light blue 18
+//purple 9
+
+string $selection_list[] = `ls -sl`;
+string $shapes[];
+
+for($element in $selection_list)
+{
+	$shapes = `listRelatives -s -path $element`;
+
+    for($shape_element in $shapes)
+    {
+     setAttr($shape_element + ".overrideEnabled") 1;
+     setAttr($shape_element + ".overrideColor") 17;
+    }
+}
