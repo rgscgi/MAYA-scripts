@@ -1,0 +1,391 @@
+
+
+global string $windowName = "textWindow";
+global string $fieldName = "textField";
+global string $buttonName = "outputButton";
+string $selection_list[] = `ls -sl`;
+
+    if(`window -ex $windowName`)
+        {
+         deleteUI $windowName;
+         }
+         else
+         {        
+             $windowName= `window -title "structure name"
+               -iconName "StructName"
+               -widthHeight 203 55`;
+        rowColumnLayout -numberOfColumns 2 -columnWidth 1 100 -columnWidth 2 100;
+               text -label "Structure Name";
+               string $struct_name = `textField $fieldName` ;
+               button -label "Apply" -command "branch_struc( $selection_list[0], `textField -q -tx $fieldName` )";     
+               button -label "Close" -command ("deleteUI -window " + $windowName);
+               setParent ..;
+    showWindow $windowName;
+    }
+
+global proc branch_struc( string $cv_name , string $struct_name )
+{
+    
+    print ("value:"+$struct_name+"\n");
+    int $cv_degree = `getAttr ($cv_name+".degree")`;
+    int $cv_spans = `getAttr ($cv_name+".spans")`;
+    select -cl; 
+    group -em -n ("grp_"+$struct_name);
+    //**********************   Blend Shape curve  ***************************************************
+    string $Blns_grp = `group -em -n ("grp_BlnSh_"+$struct_name)`;
+    string $Blns_grp_nonlinear = `group -em -n ("grp_BlnSh_nonlinear"+$struct_name)`;
+    group  -em -n ("grp_loc_"+$struct_name); 
+    
+    setAttr ($Blns_grp+".visibility") 0;
+    
+    string $BlnS_Base_curve[] = `duplicate -n ("BlnS_Base_"+$struct_name) $cv_name`;
+    string $BlnS_Bend_curve[] = `duplicate -n ("BlnS_Bend_"+$struct_name) $cv_name`;
+    string $BlnS_sine_curve[] = `duplicate -n ("BlnS_sine_"+$struct_name) $cv_name`;
+    string $BlnS_Squash_curve[] = `duplicate -n ("BlnS_Squash_"+$struct_name) $cv_name`;
+    string $BlnS_wave_curve[] = `duplicate -n ("BlnS_wave_"+$struct_name) $cv_name`;
+    string $jnt_sking_string = " ";
+    string $cluster_list[]={""};
+    
+    parent $BlnS_Base_curve[0] $BlnS_Bend_curve[0] $BlnS_sine_curve[0] $BlnS_Squash_curve[0] $BlnS_wave_curve[0] $Blns_grp_nonlinear $Blns_grp;
+    
+    
+    //**********************   Create Locator struct with joint driver  *************************************************
+    for(  $i=0.0 ; $i <= ( $cv_spans + $cv_degree ) ; $i++ )
+    {
+      spaceLocator -p 0 0 0 -n ("loc_"+$struct_name+"_"+$i) ;
+      parent ("loc_"+$struct_name+"_"+$i) ("grp_loc_"+$struct_name);
+      string $path_name = `pathAnimation -fractionMode true -n ("mpth_"+$cv_name+"_"+$i) -c $cv_name ("loc_"+$struct_name+"_"+$i)`;
+      $jnt_sking_string+=(`joint -p  0 0 0 -n ("jnt_"+$struct_name+"_"+$i)`)+" ";
+      setAttr ("jnt_"+$struct_name+"_"+$i+".t") 0 0 0;
+      cutKey -cl -t ":" -f ":" -at "u" $path_name;
+      setAttr ($path_name+".u") ((1.0/($cv_spans + $cv_degree) )*$i); 
+      
+      if($i!=0)
+       aimConstraint -mo -weight 1 -aimVector 1 0 0 -upVector 0 1 0 -worldUpType "vector" -worldUpVector 0 1 0 ("loc_"+$struct_name+"_"+$i) ("jnt_"+$struct_name+"_"+($i-1));  
+           
+     //***********************  Create Cluster  ****************************************************************** 
+      select -cl; 
+      vector $pivot_t = `getAttr ("loc_"+$struct_name+"_"+$i+".t")`; 
+      if( $i < ( $cv_spans + $cv_degree ) )
+      {   
+          string $temp_list[] = `cluster -rel -en 1 -n ("cl_"+$cv_name+"_"+$i) ($cv_name+".cv["+$i+"]")`;   
+          $cluster_list[((int)$i)] =  ($temp_list[0]+"Handle"); 
+      } 
+     } 
+     
+     int $arc_leng = `arclen $cv_name`;
+     group  -em -n ("grp_ctrl_"+$struct_name);       
+     
+     for( $i=0.0 ; $i < ( $cv_spans + $cv_degree ) ; $i++ )
+     { 
+        //************************************ Create control  *************************************** 
+       ctrl_creator( $struct_name , "ctrl_sphere" , ($arc_leng/15) ,  $i);       
+       group -em -n ("grp_ctrl_"+$struct_name+"_"+$i) ;
+       $const_to_delete = `pointConstraint -offset 0 0 0 -weight 1 ("cl_"+$cv_name+"_"+$i+"Handle") ("grp_ctrl_"+$struct_name+"_"+$i)`; 
+       delete $const_to_delete[0];
+       int $index = ($cv_spans + $cv_degree);
+       $const_to_delete = `aimConstraint -offset 0 0 0 -weight 1 -aimVector 1 0 0 -upVector 0 1 0 -worldUpType "vector" -worldUpVector 0 1 0 ("loc_"+$struct_name+"_"+$index) ("grp_ctrl_"+$struct_name+"_"+$i)`; 
+       delete $const_to_delete[0];       
+       parent ("ctrl_"+$struct_name+"_"+$i) ("grp_ctrl_"+$struct_name+"_"+$i);
+       parent ("grp_ctrl_"+$struct_name+"_"+$i) ("grp_ctrl_"+$struct_name);
+       int $grp_rotateZ = `getAttr ("grp_ctrl_"+$struct_name+".rotateZ") `;
+       //setAttr ("grp_ctrl_"+$struct_name+".rotateZ")  ( $grp_rotateZ +90 );
+       setAttr ("ctrl_"+$struct_name+"_"+$i+".t") 0 0 0;
+       setAttr ("ctrl_"+$struct_name+"_"+$i+".r") 0 0 0;      
+        
+       parentConstraint -mo -weight 1 ("ctrl_"+$struct_name+"_"+$i) ("cl_"+$cv_name+"_"+$i+"Handle");         
+     }     
+     
+        int $amount = ( $cv_spans + $cv_degree ) ;
+        int $offset = $amount/2;
+         
+        for( $i = 2 ; $i < ( $amount ) ; $i++ )
+        {
+        
+            int $values_list[] = half_series_finders( $i  , $offset , 1 , $amount );  
+            int $left_bound = ( $values_list[0] -1 );
+            int $right_bound = ( $values_list[1] - 1 );        
+              
+            string $parents_constraint[] = `parentConstraint -mo -weight 1 ( "ctrl_"+$struct_name+"_"+$right_bound ) ( "ctrl_"+$struct_name+"_"+$left_bound ) ( "grp_ctrl_"+$struct_name+"_" + ( $i - 1 ) )`;       
+            
+            int  $odd_number  = ( ( $right_bound - $left_bound + 1 ) % 2 );
+            
+            if( $odd_number )
+            {
+                   setAttr ( $parents_constraint[0]+".ctrl_"+$struct_name+"_"+$right_bound+"W0" ) 0.5; 
+                   setAttr ( $parents_constraint[0]+".ctrl_"+$struct_name+"_"+$left_bound+"W1" ) 0.5; 
+            }
+            else
+            {
+               if(  $i == ( ( ( $right_bound - $left_bound + 1 ) / 2 ) +  $left_bound  )  )
+               {           
+                   setAttr ( $parents_constraint[0]+".ctrl_"+$struct_name+"_"+$right_bound+"W0" ) 0.37; 
+                   setAttr ( $parents_constraint[0]+".ctrl_"+$struct_name+"_"+$left_bound+"W1" ) 0.43; 
+                }
+                else
+                { 
+                //print ("test:"+($i-1)+"     "+( ( ( $right_bound - $left_bound + 1 ) / 2 ) + $left_bound )+"\n");                     
+                   setAttr ( $parents_constraint[0]+".ctrl_"+$struct_name+"_"+$right_bound+"W0" ) 0.43; 
+                   setAttr ( $parents_constraint[0]+".ctrl_"+$struct_name+"_"+$left_bound+"W1" ) 0.37;                     
+                }                
+            }
+            
+            
+         } 
+        
+        string $last_ctrl = ( "ctrl_"+$struct_name+"_"+( $amount - 1 ) ); 
+        string $parents[] = `listRelatives -ap -f ( $last_ctrl )`;
+        
+        addAttr -ln "Bend_______________"  -at double  ( $parents[0]+"|"+( $last_ctrl ) );
+        setAttr -e-channelBox true ( $parents[0]+"|"+( $last_ctrl )+".Bend_______________");           
+        
+        addAttr -ln "bend_envelope"  -at double  -min 0 -max 10 ( $parents[0]+"|"+( $last_ctrl ) );
+        setAttr -e-keyable true ( $parents[0]+"|"+$last_ctrl+".bend_envelope" );   
+        addAttr -ln "bend_curvature" -at double  -min -180 -max 180  ( $parents[0]+"|"+( $last_ctrl ) );
+        setAttr -e-keyable true ( $parents[0]+"|"+$last_ctrl+".bend_curvature" );  
+        
+        addAttr -ln "sine_______________"  -at double  ( $parents[0]+"|"+( $last_ctrl ) );
+        setAttr -e-channelBox true ( $parents[0]+"|"+( $last_ctrl )+".sine_______________");    
+        
+        addAttr -ln "sine_envelope"  -at double  -min 0 -max 10 ( $parents[0]+"|"+( $last_ctrl ) );
+        setAttr -e-keyable true ( $parents[0]+"|"+$last_ctrl+".sine_envelope" );   
+        addAttr -ln "sine_amplitude"  -at double -min -5 -max 5  ( $parents[0]+"|"+( $last_ctrl ) );
+        setAttr -e-keyable true ( $parents[0]+"|"+$last_ctrl+".sine_amplitude" );               
+        addAttr -ln "sine_wavelength"  -at double  -min 0.1 -max 10   ( $parents[0]+"|"+( $last_ctrl ) );
+        setAttr -e-keyable true ( $parents[0]+"|"+$last_ctrl+".sine_wavelength" );   
+        addAttr -ln "sine_offset"  -at double   ( $parents[0]+"|"+( $last_ctrl ) );
+        setAttr -e-keyable true ( $parents[0]+"|"+$last_ctrl+".sine_offset" );
+        
+        addAttr -ln "Squatch_______________"  -at double  ( $parents[0]+"|"+( $last_ctrl ) );
+        setAttr -e-channelBox true ( $parents[0]+"|"+( $last_ctrl )+".Squatch_______________");           
+        
+        addAttr -ln "squash_envelope"  -at double  -min 0 -max 10 ( $parents[0]+"|"+( $last_ctrl ) );
+        setAttr -e-keyable true ( $parents[0]+"|"+$last_ctrl+".squash_envelope" );   
+        addAttr -ln "squash_factor" -at double  -min -10 -max 10  ( $parents[0]+"|"+( $last_ctrl ) );
+        setAttr -e-keyable true ( $parents[0]+"|"+$last_ctrl+".squash_factor" );
+        
+        addAttr -ln "Wave_______________"  -at double  ( $parents[0]+"|"+( $last_ctrl ) );
+        setAttr -e-channelBox true ( $parents[0]+"|"+( $last_ctrl )+".Wave_______________");               
+        
+        addAttr -ln "wave_envelope"  -at double  -min 0 -max 10 ( $parents[0]+"|"+( $last_ctrl ) );
+        setAttr -e-keyable true ( $parents[0]+"|"+$last_ctrl+".wave_envelope" );   
+        addAttr -ln "wave_amplitude" -at double  -min -5 -max 5  ( $parents[0]+"|"+( $last_ctrl ) );
+        setAttr -e-keyable true ( $parents[0]+"|"+$last_ctrl+".wave_amplitude" );                               
+        addAttr -ln "wave_wavelength" -at double -min 0.1 -max 10  ( $parents[0]+"|"+( $last_ctrl ) );
+        setAttr -e-keyable true ( $parents[0]+"|"+$last_ctrl+".wave_wavelength" );       
+        addAttr -ln "wave_offset" -at double ( $parents[0]+"|"+( $last_ctrl ) );
+        setAttr -e-keyable true ( $parents[0]+"|"+$last_ctrl+".wave_offset" );               
+        
+     group -n ("grp_cls_"+$struct_name) $cluster_list; 
+
+       //************************************    Blend Shape  **************************************************************
+       string $first_loc = ("loc_"+$struct_name+"_0");
+       string $last_loc = ("loc_"+$struct_name+"_"+( $cv_spans + $cv_degree ));       
+       string $const_to_delete[] = `pointConstraint -offset 0 0 0 -weight 1 $first_loc $last_loc $Blns_grp_nonlinear`;
+       delete $const_to_delete;
+       $const_to_delete= `aimConstraint -offset 0 0 0 -weight 1 -aimVector 1 0 0 -upVector 0 1 0 -worldUpType "vector" -worldUpVector 0 1 0 $last_loc $Blns_grp_nonlinear`;     
+       delete $const_to_delete;
+       
+       string $def_drv_bend[] = `nonLinear -type bend  -lowBound -1 -highBound 1 -curvature 0 $BlnS_Bend_curve[0]`;       
+       string $def_drv_sine[] = `nonLinear -type sine -lowBound -1 -highBound 1 -amplitude 0 -wavelength 2 -dropoff 0 -offset 0 $BlnS_sine_curve[0]`;
+       string $def_drv_squash[] = `nonLinear -type squash  -lowBound -1 -highBound 1 -startSmoothness 0 -endSmoothness 0 -maxExpandPos 0.5 -expand 1 -factor 0 $BlnS_Squash_curve[0]`;
+       string $def_drv_wave[] = `nonLinear -type wave -minRadius 0 -maxRadius 1 -amplitude 0 -wavelength 1 -dropoff 0 -offset 0 $BlnS_wave_curve[0]`;
+       
+       $def_drv_bend[0] = `rename $def_drv_bend[0] ("bend_"+$struct_name)`;
+       $def_drv_sine[0] = `rename $def_drv_sine[0] ("sine_"+$struct_name)`;
+       $def_drv_squash[0] = `rename $def_drv_squash[0] ("squash_"+$struct_name)`;
+       $def_drv_wave[0] = `rename $def_drv_wave[0] ("wave_"+$struct_name)`;
+       
+       $def_drv_bend[1] = `rename $def_drv_bend[1] ("bend_"+$struct_name+"Handle")`;
+       $def_drv_sine[1] = `rename $def_drv_sine[1] ("sine_"+$struct_name+"Handle")`;
+       $def_drv_squash[1] = `rename $def_drv_squash[1] ("squash_"+$struct_name+"Handle")`;
+       $def_drv_wave[1] = `rename $def_drv_wave[1] ("wave_"+$struct_name+"Handle")`;
+       
+       setAttr ($def_drv_bend[0]+".highBound")  0;
+       setAttr ($def_drv_sine[0]+".dropoff") 1;
+       setAttr ($def_drv_squash[0]+".highBound") 0;
+       setAttr ($def_drv_wave[0]+".dropoff") 1;
+       
+       parent ($def_drv_bend[0]+"Handle") ($def_drv_sine[0]+"Handle") ($def_drv_squash[0]+"Handle") ($def_drv_wave[0]+"Handle") $Blns_grp_nonlinear;
+       
+       setAttr ($def_drv_bend[0]+"Handle.r") 0 0 90; 
+       setAttr ($def_drv_sine[0]+"Handle.r") 0 0 90;
+       setAttr ($def_drv_squash[0]+"Handle.r") 0 0 90; 
+       setAttr ($def_drv_wave[0]+"Handle.r") 0 0 0;
+       
+       string $BlnSh_deformer[] = `blendShape -n ( "BlndSh_Base" + $struct_name ) -w 0 1.0 $BlnS_Base_curve[0] $cv_name`;
+       string $BlnSh_to_Base[] = `blendShape -parallel -n ( "BlndSh_to_Base" + $struct_name ) -w 1 1.0 -w 0 1.0 -w 2 1.0 -w 3 1.0 $BlnS_Bend_curve[0] $BlnS_sine_curve[0] $BlnS_Squash_curve[0] $BlnS_wave_curve[0] $BlnS_Base_curve[0]`;       
+       reorderDeformers ("cl_"+$cv_name+"_0Handle") ( "BlndSh_Base" + $struct_name ) $cv_name;
+       
+       //*****************************************************
+       //*******************  Bend     ***********************
+       //*****************************************************
+       
+       //*******************  Bend Envelope    ***************
+        
+        setAttr ( "ctrl_"+$struct_name+"_"+( $amount-1 )+".bend_envelope") 0;
+        setAttr ( $def_drv_bend[0]+".envelope" ) 0;
+        setDrivenKeyframe -currentDriver ( "ctrl_"+$struct_name+"_"+( $amount-1 )+".bend_envelope") ( $def_drv_bend[0]+".envelope" );
+        
+        setAttr ( "ctrl_"+$struct_name+"_"+( $amount-1 )+".bend_envelope") 10;
+        setAttr ( $def_drv_bend[0]+".envelope" ) 1;
+        setDrivenKeyframe -currentDriver ( "ctrl_"+$struct_name+"_"+( $amount-1 )+".bend_envelope") ( $def_drv_bend[0]+".envelope" );  
+        
+        //*******************  Bend Curvature    ***************
+        
+        connectAttr -f ( "ctrl_"+$struct_name+"_"+( $amount-1 )+".bend_curvature") ( $def_drv_bend[0]+".curvature" );
+       
+       //*****************************************************
+       //*******************  Sine     ***********************
+       //*****************************************************
+       
+       //*******************  Sine Envelope    ***************
+       
+        setAttr ( "ctrl_"+$struct_name+"_"+( $amount-1 )+".sine_envelope") 0;
+        setAttr ( $def_drv_sine[0]+".envelope" ) 0;
+        setDrivenKeyframe -currentDriver ( "ctrl_"+$struct_name+"_"+( $amount-1 )+".sine_envelope") ( $def_drv_sine[0]+".envelope" );
+        
+        setAttr ( "ctrl_"+$struct_name+"_"+( $amount-1 )+".sine_envelope") 10;
+        setAttr ( $def_drv_sine[0]+".envelope" ) 1;
+        setDrivenKeyframe -currentDriver ( "ctrl_"+$struct_name+"_"+( $amount-1 )+".sine_envelope") ( $def_drv_sine[0]+".envelope" );         
+        
+        //*******************  Sine Amplitude    ***************
+        
+        connectAttr -f ( "ctrl_"+$struct_name+"_"+( $amount-1 )+".sine_amplitude") ( $def_drv_sine[0]+".amplitude" );        
+        
+        //*******************  Sine WaveLength    ***************
+        
+        connectAttr -f ( "ctrl_"+$struct_name+"_"+( $amount-1 )+".sine_wavelength") ( $def_drv_sine[0]+".wavelength" );           
+        
+        //*******************  Sine OffSet    ***************
+        
+        connectAttr -f ( "ctrl_"+$struct_name+"_"+( $amount-1 )+".sine_offset") ( $def_drv_sine[0]+".offset" );             
+       
+       //*****************************************************
+       //*******************  Squash     *********************
+       //*****************************************************
+       
+       //*******************  Squash Envelope    *************
+       
+        setAttr ( "ctrl_"+$struct_name+"_"+( $amount-1 )+".squash_envelope") 0;
+        setAttr ( $def_drv_squash[0]+".envelope" ) 0;
+        setDrivenKeyframe -currentDriver ( "ctrl_"+$struct_name+"_"+( $amount-1 )+".squash_envelope") ( $def_drv_squash[0]+".envelope" );
+        
+        setAttr ( "ctrl_"+$struct_name+"_"+( $amount-1 )+".squash_envelope") 10;
+        setAttr ( $def_drv_squash[0]+".envelope" ) 1;
+        setDrivenKeyframe -currentDriver ( "ctrl_"+$struct_name+"_"+( $amount-1 )+".squash_envelope") ( $def_drv_squash[0]+".envelope" );         
+        
+        //*******************  Squash Factor    ***************
+        
+        connectAttr -f ( "ctrl_"+$struct_name+"_"+( $amount-1 )+".squash_factor") ( $def_drv_squash[0]+".factor" );            
+       
+       //*****************************************************
+       //*******************  Wave     ***********************
+       //***************************************************** 
+       
+       //*******************  Wave Envelope    ***************  
+       
+        setAttr ( "ctrl_"+$struct_name+"_"+( $amount-1 )+".wave_envelope") 0;
+        setAttr ( $def_drv_wave[0]+".envelope" ) 0;
+        setDrivenKeyframe -currentDriver ( "ctrl_"+$struct_name+"_"+( $amount-1 )+".wave_envelope") ( $def_drv_wave[0]+".envelope" );
+        
+        setAttr ( "ctrl_"+$struct_name+"_"+( $amount-1 )+".wave_envelope") 10;
+        setAttr ( $def_drv_wave[0]+".envelope" ) 1;
+        setDrivenKeyframe -currentDriver ( "ctrl_"+$struct_name+"_"+( $amount-1 )+".wave_envelope") ( $def_drv_wave[0]+".envelope" );                  
+        
+        //*******************  Wave Amplitude    ***************
+        
+        connectAttr -f ( "ctrl_"+$struct_name+"_"+( $amount-1 )+".wave_amplitude") ( $def_drv_wave[0]+".amplitude" );          
+        
+        //*******************  Wave WaveLength    ***************
+        
+        connectAttr -f ( "ctrl_"+$struct_name+"_"+( $amount-1 )+".wave_wavelength") ( $def_drv_wave[0]+".wavelength" );           
+        
+        //*******************  Wave OffSet    ***************
+        
+        connectAttr -f ( "ctrl_"+$struct_name+"_"+( $amount-1 )+".wave_offset") ( $def_drv_wave[0]+".offset" );     
+        
+        
+        //******************************   Parent GRPs   ********************************
+        
+        parent ("grp_loc_"+$struct_name) ("grp_BlnSh_"+$struct_name) ("grp_ctrl_"+$struct_name) ("grp_cls_"+$struct_name) $cv_name ("grp_"+$struct_name);
+    
+
+}
+
+proc ctrl_creator( string $base_name ,string $type_shape ,int $radio , int $number)
+{
+    switch( $type_shape ){ 
+    case "ctrl_sphere":   
+            circle -ch on -o on -nr 1 0 0 -r $radio  -n ("ctrl_"+$base_name+"_"+$number);            
+            circle -ch on -o on -nr 0 1 0 -r $radio  -n ("ctrl_"+$base_name+"_B"+$number);            
+            circle -ch on -o on -nr 0 0 1 -r $radio  -n ("ctrl_"+$base_name+"_C"+$number);
+            
+            DeleteHistory ("ctrl_"+$base_name+"_"+$number); 
+            DeleteHistory ("ctrl_"+$base_name+"_B"+$number); 
+            DeleteHistory ("ctrl_"+$base_name+"_C"+$number); 
+            setAttr ("ctrl_"+$base_name+"_"+$number+"Shape"+".overrideEnabled") 1;
+            setAttr ("ctrl_"+$base_name+"_B"+$number+"Shape"+".overrideEnabled") 1;
+            setAttr ("ctrl_"+$base_name+"_C"+$number+"Shape"+".overrideEnabled") 1;
+            
+            setAttr ("ctrl_"+$base_name+"_"+$number+"Shape"+".overrideColor") 13;
+            setAttr ("ctrl_"+$base_name+"_B"+$number+"Shape"+".overrideColor") 13;
+            setAttr ("ctrl_"+$base_name+"_C"+$number+"Shape"+".overrideColor") 13;
+            
+            parent -add -shape ("ctrl_"+$base_name+"_B"+$number+"Shape") ("ctrl_"+$base_name+"_C"+$number+"Shape") ("ctrl_"+$base_name+"_"+$number);
+            delete ("ctrl_"+$base_name+"_B"+$number) ("ctrl_"+$base_name+"_C"+$number);            
+            break;
+    }
+}
+
+proc int[] half_series_finders( int $find , int $offset , int $left_value , int $right_value )
+{   
+  
+  int $remainder = ( (  $right_value - $left_value + 1 )%2 ); 
+  int $half_value = ( ( ( (  $right_value - $left_value + $remainder + 1 )/2 ) ) );
+  print( $left_value+"  "+$right_value+"  ( Half:"+$half_value+" Remainder:"+$remainder+"  Find:"+$find+"  Rest:"+( ( $remainder )? ($half_value) :($half_value+1) )+" Offset:"+$offset+" )\n" );
+  
+  if( $remainder )
+  {
+        if( $find <= $half_value + $left_value - 1 )
+        {
+                if( ( $find == $half_value + $left_value - 1 ) )  
+                {                                
+                  int $return_values[]={ $left_value , $right_value };
+                  return $return_values;
+                }
+                else
+                {                 
+                  int $return_values[] = half_series_finders( $find , $offset , $left_value , ( $half_value + $left_value - 1 ) );  
+                  return $return_values;  
+                }
+         }
+         else
+         {
+                  int $return_values[] = half_series_finders( $find , $offset , ( $half_value + $left_value - 1 )  , $right_value );  
+                  return $return_values;
+                       
+         }
+  }
+  else
+  {
+      if( $find <= ( $half_value + $left_value ) )
+      {
+                if( ( ( $find == ( $half_value + $left_value -1 ) ) || ( $find == ( $half_value + $left_value  ) ) ) )  
+                {
+                  int $return_values[]={ $left_value , $right_value };
+                  return $return_values;
+                }
+                else
+                {                  
+                  int $return_values[] = half_series_finders( $find , $offset , $left_value ,  ( $half_value + $left_value - 1 ) );
+                  return $return_values; 
+                }          
+      }
+         else
+         { 
+                int $return_values[] = half_series_finders( $find , $offset , ( $half_value + $left_value )  , $right_value );  
+                return $return_values;      
+         }      
+  }
+}
