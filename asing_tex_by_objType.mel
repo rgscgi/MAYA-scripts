@@ -1,21 +1,105 @@
-string $selection_list[] = `ls -sl`;
 
-for( $object in $selection_list )
+proc findFaceProportion( string $objectName)
 {
-   int $result_list[] = ` polyEvaluate -f $object`;
-   
-   if( $result_list[0]<3 )
+    if(!(`objExists "SG_joung"`))
     {
-        int $probability = rand(1 , 3);
-        print($probability );
-        if($probability ==1)
-            sets -e -forceElement SG_joung $object;
-           else
-            sets -e -forceElement SG_old $object;
+    shadingNode -asShader lambert -n "mat_joung";
+    sets -renderable true -noSurfaceShader true -empty -name "SG_joung";
+    connectAttr -f mat_joung.outColor SG_joung.surfaceShader;
+    setAttr "mat_joung.color" -type double3 1 0 0 ;
     }
-    else
-    {
-        sets -e -forceElement SG_trunk $object;
-     }
     
+    if(!(`objExists "SG_old"`))
+    {
+    shadingNode -asShader lambert -n "mat_old";
+    sets -renderable true -noSurfaceShader true -empty -name "SG_old";
+    connectAttr -f mat_old.outColor SG_old.surfaceShader;
+    setAttr "mat_old.color" -type double3 0 1 0 ;
+    }
+    
+    if(!(`objExists "SG_trunk"`))
+    {
+    shadingNode -asShader lambert -n "mat_trunk";
+    sets -renderable true -noSurfaceShader true -empty -name "SG_trunk";
+    connectAttr -f mat_trunk.outColor SG_trunk.surfaceShader;
+    setAttr "mat_trunk.color" -type double3 0 0 1 ;
+    }      
+    
+    int $conditionFacesList[];
+    int $tempFace;
+    
+    
+    int $faceNumbers[] = `polyEvaluate -f $objectName`;
+    
+    int $a;
+    for( $a = 0 ; $a < $faceNumbers[0] ; $a++)
+    {   
+        
+        $tempFace = $a;
+        
+        string $faceEdgeList[] = `polyInfo -fe ($objectName+".f["+$a+"]")`;
+        
+        string $tokens[];
+        int $edgesList[];
+        clear $edgesList;
+        
+        tokenize $faceEdgeList[0] " :\n\r" $tokens;
+        int $i;
+        for( $i = 2 ; $i < ` size $tokens ` ; $i++ )
+        {
+            $edgesList[$i-2] = ( ((int)$tokens[$i])*1 ) ;
+        }
+        
+            string $edgeFaceList[];
+            int $faceCount = 0;
+            string $edge;
+            for( $edge in $edgesList)
+            {
+                $edgeFaceList = `polyInfo -ef ($objectName+".e["+$edge+"]")`;
+                
+                tokenize $edgeFaceList[0] " :\n\r" $tokens;
+                $faceCount+= ` size $tokens`;
+                
+            } 
+           
+            switch( $faceCount )
+            {
+                case 10:
+                         print($tempFace+"\n");
+                         //$conditionFacesList[`size $conditionFacesList`] = $tempFace;
+                         
+                                int $probability = rand(1 , 3);
+                                print($probability );
+                                if($probability ==1)
+                                    asingMatToShell( ($objectName+".f["+$tempFace+"]"), "SG_joung" );
+                                   else
+                                    asingMatToShell( ($objectName+".f["+$tempFace+"]"), "SG_old" );
+                             
+                        break; 
+                  default  :
+                      asingMatToShell( ($objectName+".f["+$tempFace+"]"), "SG_trunk" );
+                     break;
+            }
+    }        
 }
+
+proc asingMatToShell(string $nameIdFace , string $SG )
+{ 
+    string $g[] = `ls -sl`;
+    string $objectName;
+    string $token[];
+    tokenize $nameIdFace "." $token;
+    $objectName = $token[0];
+    tokenize $token[1] "f[]" $token;
+    int $faceId = $token[0];
+    int $a[] = `polySelect -extendToShell $faceId   $objectName`;    
+    
+    sets -e -forceElement $SG;
+    
+    //print $a;
+}
+
+string $objectsList[] = `ls -sl`;
+string $object;
+for( $object in $objectsList )
+findFaceProportion( $object);
