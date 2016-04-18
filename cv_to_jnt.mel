@@ -1,0 +1,14 @@
+proc cv_to_jnt( string $cv_name , string $jnt_name )
+{
+    int $cv_degree = `getAttr ($cv_name+".degree")`;
+    int $cv_spans = `getAttr ($cv_name+".spans")`;
+    select -cl; 
+    for(  $i=0 ; $i < ($cv_spans + $cv_degree) ; $i++ )
+    {
+      vector $pivot_t = `getAttr ($cv_name+".cv["+$i+"]")`;
+      joint -n ("jnt_"+$jnt_name+"0" ) -p ($pivot_t.x) ($pivot_t.y) ($pivot_t.z);
+      select -cl;   
+    }
+}
+
+cv_to_jnt( "curve1" , "spine" );
