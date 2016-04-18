@@ -1,0 +1,29 @@
+//*************************************************
+//*************   
+//*************************************************
+
+proc cv_to_jnt( string $cv_name , string $jnt_name )
+{
+    int $cv_degree = `getAttr ($cv_name+".degree")`;
+    int $cv_spans = `getAttr ($cv_name+".spans")`;
+    select -cl; 
+    for(  $i=0 ; $i < ($cv_spans + $cv_degree) ; $i++ )
+    {
+      vector $pivot_t = `getAttr ($cv_name+".cv["+$i+"]")`;
+      joint -n ("jnt_"+$jnt_name+"_"+$i ) -p ($pivot_t.x) ($pivot_t.y) ($pivot_t.z);
+    }
+    
+    ikHandle -sol ikSplineSolver -ccv false -n ( "ikh_"+$cv_name ) -sj ("jnt_"+$jnt_name+"_"+"0") -ee ("jnt_"+$jnt_name+"_"+($cv_spans + $cv_degree-1) ) -c $cv_name;
+    
+    group -n ("grp_"+("jnt_"+$cv_name ) );
+    
+    parent $cv_name ("jnt_"+$jnt_name+"_"+"0") ("grp_"+("jnt_"+$cv_name ) );
+    
+}
+
+string $cv_names[] = `ls -sl`;
+
+for( $i=0; $i < size($cv_names) ; $i++ )
+{
+    cv_to_jnt( $cv_names[$i] , ("spine_"+$i) );
+}
