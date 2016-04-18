@@ -1,0 +1,60 @@
+//DetachEdgeComponent; PolySelectConvert;
+
+string $ListObjects[] = `ls -sl`;
+float $axisPlane[] = {1,0,1};
+
+for( $object in $ListObjects)
+{
+    string $objectDuplicate[] = `duplicate -rr $object`;
+    UV_unwrap( $objectDuplicate[0] , $axisPlane );
+}
+    
+global proc UV_unwrap( string $object , float $axisPlane[] )
+{
+    int $PolyValues[] = `polyEvaluate -v -e -f -uv -s -a  $object`;
+    float $PolyValuesBounding[] = `polyEvaluate -b $object`;
+
+    int $NumVertex = $PolyValues[0];
+    int $NumEdge = $PolyValues[1];
+    int $NumbFace = $PolyValues[2];
+    int $NumUV = $PolyValues[3];
+    int $NumShell = $PolyValues[4];
+    int $Area = $PolyValues[5];
+    int $UV_BorderEdge[];
+    int $Count_UV_BorderEdge = 0;
+    string $UV_flatten[];
+    string $uvMap[];
+    
+    for( $i=0 ; $i < $NumEdge ; $i++ )
+    {    
+        $uvMap = `polyListComponentConversion -fe -tuv ( $object+".e["+$i+"]" )`;        
+        $UV_flatten = `ls -flatten $uvMap`;        
+        if( size($UV_flatten) > 2 )         
+            $UV_BorderEdge[ $Count_UV_BorderEdge++ ] = $i ;         
+        
+    }
+    select -r  ($object+".e["+$UV_BorderEdge[0]+"]");
+    int $NumUVBorderEdge = ( size( $UV_BorderEdge ) );
+    for( $j = 1 ; $j < $NumUVBorderEdge ; $j++ )
+     select -tgl ($object+".e["+$UV_BorderEdge[$j]+"]");
+     DetachEdgeComponent;
+     string $newObjects[] = `duplicate -rr $object`;
+     
+    int $PolyValues[] = `polyEvaluate -v -e -f -uv -s -a  $newObjects[0]`;
+    float $PolyValuesBounding[] = `polyEvaluate -b $newObjects[0]`;
+
+    int $NumVertex_new = $PolyValues[0];
+    int $NumEdge_new = $PolyValues[1];    
+    
+    for( $i = 0 ; $i < $NumVertex_new ; $i++)
+    {
+      $uvMap = `polyListComponentConversion -fv -tuv ( $newObjects[0]+".vtx["+$i+"]" )`; 
+      $UVvalues = `polyEditUV -query $uvMap`;
+      $BoundingX = abs($PolyValuesBounding[1] - $PolyValuesBounding[0]);
+      $BoundingY = abs($PolyValuesBounding[3] - $PolyValuesBounding[2]);      
+      $BoundingZ = abs($PolyValuesBounding[5] - $PolyValuesBounding[4]); 
+      print ($PolyValuesBounding[0]+" "+$PolyValuesBounding[1]+"\n"+$BoundingX+" "+$BoundingZ+"\n\n");
+           
+      xform -a -t (($UVvalues[0]*$axisPlane[0]*$BoundingX-$PolyValuesBounding[1])*2 ) 0 (($UVvalues[1]*$axisPlane[2]*$BoundingZ-$PolyValuesBounding[5])*2) ( $object+".vtx["+$i+"]" );
+    }
+}
