@@ -1,0 +1,20 @@
+
+string $object_name[] = `ls -sl`;
+for( $object in $object_name )
+{
+    vector $position = `xform -q -t $object`;
+    float $pivo[] = `xform -q -piv $object`;
+    string $parent[] = `listRelatives  -p $object `;
+    group - empty -n ("grp_drv_"+$object);
+    group - empty -n ("grp_"+$object);
+    print( $parent[0]+"  "+size($parent)+"\n");
+    parent ("grp_drv_"+$object) $parent[0];
+    parent ("grp_"+$object) ("grp_drv_"+$object) ;
+    if(  (`nodeType $object`) == "joint" ){
+       
+     xform -t ($position.x) ($position.y) ($position.z) ("grp_drv_"+$object);
+    }else{
+     xform -t $pivo[0] $pivo[1] $pivo[2] ("grp_drv_"+$object);
+     }
+    parent $object ("grp_"+$object);    
+}
