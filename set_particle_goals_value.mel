@@ -1,0 +1,15 @@
+//**************************************************
+//************  Make particle goal value  ************
+//**************************************************
+string $particles_list[] = `ls -sl`;
+
+for($particle in $particles_list)
+{
+    int $count = `particle -q -ct $particle`;
+    string $shapes[] = `listRelatives -s  $particle`;
+    
+   for($i=1 ; $i < $count ; $i++ )
+   {
+       particle -e -or $i -at goalPP -fv (($count-$i)/10.0) $shapes[0]; 
+   }
+}
