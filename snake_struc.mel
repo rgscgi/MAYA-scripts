@@ -1,0 +1,109 @@
+proc snake_struc( string $cv_name , string $struc_name )
+{
+    int $cv_degree = `getAttr ($cv_name+".degree")`;
+    int $cv_spans = `getAttr ($cv_name+".spans")`;
+    select -cl; 
+    string $ikSpline_curve[] = `duplicate -n ("sc_ikspline_"+$struc_name)  $cv_name`;
+    //**********************   Blend Shape curve  ***************************************************
+    string $Blns_grp = `group -em -n ("grp_BlnSh_"+$struc_name)`;
+    string $Blns_grp_nonlinear = `group -em -n ("grp_BlnSh_nonlinear"+$struc_name)`;
+    
+    string $BlnS_Base_curve[] = `duplicate -n ("BlnS_Base_"+$struc_name) $cv_name`;
+    string $BlnS_Bend_curve[] = `duplicate -n ("BlnS_Bend_"+$struc_name) $cv_name`;
+    string $BlnS_sine_curve[] = `duplicate -n ("BlnS_sine_"+$struc_name) $cv_name`;
+    string $BlnS_Squash_curve[] = `duplicate -n ("BlnS_Squash_"+$struc_name) $cv_name`;
+    string $BlnS_wave_curve[] = `duplicate -n ("BlnS_wave_"+$struc_name) $cv_name`;
+    string $jnt_sking_string = " ";
+    
+    parent $BlnS_Base_curve[0] $BlnS_Bend_curve[0] $BlnS_sine_curve[0] $BlnS_Squash_curve[0] $BlnS_wave_curve[0] $Blns_grp_nonlinear $Blns_grp;
+    group  -em -n ("grp_"+$struc_name);
+    
+    for(  $i=0.0 ; $i <= ( $cv_spans + $cv_degree ) ; $i++ )
+    {
+      spaceLocator -p 0 0 0 -n ("loc_"+$struc_name+"_"+$i) ;
+      parent ("loc_"+$struc_name+"_"+$i) ("grp_"+$struc_name);
+      string $path_name = `pathAnimation -fractionMode true -n ("mpth_"+$cv_name+"_"+$i) -c $cv_name ("loc_"+$struc_name+"_"+$i)`;
+      $jnt_sking_string+=(`joint -p  0 0 0 -n ("jnt_"+$struc_name+"_"+$i)`)+" ";
+      setAttr ("jnt_"+$struc_name+"_"+$i+".t") 0 0 0;
+      CBdeleteConnection ($path_name+".u");
+      setAttr ($path_name+".u") ((1.0/($cv_spans + $cv_degree) )*$i);      
+     //***********************  Create jnt_sking chain  ****************************************************************** 
+      select -cl; 
+      vector $pivot_t = `getAttr ("loc_"+$struc_name+"_"+$i+".t")`;      
+      
+      if( !$i )     
+      {
+        joint -n ("jnt_"+$struc_name+"_Skin_"+$i) -p ($pivot_t.x) ($pivot_t.y) ($pivot_t.z);
+        select -cl;
+        joint -n ("jnt_"+$struc_name+"_Drv_"+$i) -p ($pivot_t.x) ($pivot_t.y) ($pivot_t.z);
+      }   
+      else      
+      {
+        select -r ("jnt_"+$struc_name+"_Skin_"+($i-1)); 
+        joint -n ("jnt_"+$struc_name+"_Skin_"+$i) -p ($pivot_t.x) ($pivot_t.y) ($pivot_t.z);  
+        joint -e -zso -oj xyz -sao yup ("jnt_"+$struc_name+"_Skin_"+($i-1)); 
+        
+        select -r ("jnt_"+$struc_name+"_Drv_"+($i-1)); 
+        joint -n ("jnt_"+$struc_name+"_Drv_"+$i) -p ($pivot_t.x) ($pivot_t.y) ($pivot_t.z);  
+        joint -e -zso -oj xyz -sao yup ("jnt_"+$struc_name+"_Drv_"+($i-1));            
+      }      
+      
+     }   
+        //************************* IKSplineSolver  jnt_skin  *************************************************************
+        string $star_joint = ("jnt_"+$struc_name+"_Skin_0");
+        string $end_effector = ("jnt_"+$struc_name+"_Skin_"+($cv_spans + $cv_degree));
+        ikHandle -sol ikSplineSolver -tws easeInOut -ccv false -sj $star_joint -ee $end_effector -c $ikSpline_curve[0] -n ("ik_spline_"+$struc_name);  
+        //************************* IKSpringSolver  jnt_Drv  *************************************************************  
+        ikSpringSolver;
+        string $star_joint = ("jnt_"+$struc_name+"_Drv_0");
+        string $end_effector = ("jnt_"+$struc_name+"_Drv_"+($cv_spans + $cv_degree));
+        ikHandle -sol ikSpringSolver -sj $star_joint -ee $end_effector -n ("ik_spring_"+$struc_name);  
+       //************************************    Blend Shape  **************************************************************
+       string $first_loc = ("loc_"+$struc_name+"_0");
+       string $last_loc = ("loc_"+$struc_name+"_"+( $cv_spans + $cv_degree ));       
+       string $const_to_delete[] = `pointConstraint -offset 0 0 0 -weight 1 $first_loc $last_loc $Blns_grp_nonlinear`;
+       delete $const_to_delete;
+       $const_to_delete= `aimConstraint -offset 0 0 0 -weight 1 -aimVector 1 0 0 -upVector 0 1 0 -worldUpType "vector" -worldUpVector 0 1 0 $last_loc $Blns_grp_nonlinear`;     
+       delete $const_to_delete;
+       
+       string $def_drv_bend[] = `nonLinear -type bend  -lowBound -1 -highBound 1 -curvature 0 $BlnS_Bend_curve[0]`;       
+       string $def_drv_sine[] = `nonLinear -type sine -lowBound -1 -highBound 1 -amplitude 0 -wavelength 2 -dropoff 0 -offset 0 $BlnS_sine_curve[0]`;
+       string $def_drv_squash[] = `nonLinear -type squash  -lowBound -1 -highBound 1 -startSmoothness 0 -endSmoothness 0 -maxExpandPos 0.5 -expand 1 -factor 0 $BlnS_Squash_curve[0]`;
+       string $def_drv_wave[] = `nonLinear -type wave -minRadius 0 -maxRadius 1 -amplitude 0 -wavelength 1 -dropoff 0 -offset 0 $BlnS_wave_curve[0]`;
+       
+       setAttr ($def_drv_bend[0]+".highBound")  0;
+       setAttr ($def_drv_sine[0]+".dropoff") 1;
+       setAttr ($def_drv_squash[0]+".highBound") 0;
+       setAttr ($def_drv_wave[0]+".dropoff") 1;
+       
+       parent ($def_drv_bend[0]+"Handle") ($def_drv_sine[0]+"Handle") ($def_drv_squash[0]+"Handle") ($def_drv_wave[0]+"Handle") $Blns_grp_nonlinear;
+       
+       setAttr ($def_drv_bend[0]+"Handle.r") 0 0 90; 
+       setAttr ($def_drv_sine[0]+"Handle.r") 0 0 90;
+       setAttr ($def_drv_squash[0]+"Handle.r") 0 0 90; 
+       setAttr ($def_drv_wave[0]+"Handle.r") 0 0 0;
+       
+       string $BlnSh_deformer[] = `blendShape -n "BlndSh_Base"  -w 0 1.0 $BlnS_Base_curve[0] $cv_name`;
+       string $BlnSh_to_Base[] = `blendShape -parallel -n "BlndSh_to_Base" -w 1 1.0 -w 0 1.0 -w 2 1.0 -w 3 1.0 $BlnS_Bend_curve[0] $BlnS_sine_curve[0] $BlnS_Squash_curve[0] $BlnS_wave_curve[0] $BlnS_Base_curve[0]`;
+       //*************************  BindSkin  cv_sking   ******************************************************************
+        eval  ("skinCluster "+$ikSpline_curve[0]+" "+$jnt_sking_string);
+        eval  ("skinCluster "+$cv_name+" "+"jnt_"+$struc_name+"_Drv_0" );
+       //************************************ Create control  ***************************************
+       int $arc_leng = `arclen $cv_name`;
+       group  -em -n ("grp_ctrl_"+$struc_name);       
+       circle -c 0 0 0 -nr 1 0 0 -sw 360 -r ($arc_leng/20) -d 3 -ut 0 -tol 0.01 -s 8 -ch 1 -n ("ctrl_"+$struc_name);
+       $const_to_delete = `pointConstraint -offset 0 0 0 -weight 1 $first_loc ("grp_ctrl_"+$struc_name)`; 
+       delete $const_to_delete[0];
+       $const_to_delete = `aimConstraint -offset 0 0 0 -weight 1 -aimVector 1 0 0 -upVector 0 1 0 -worldUpType "vector" -worldUpVector 0 1 0 $last_loc ("grp_ctrl_"+$struc_name)`; 
+       delete $const_to_delete[0];       
+       parent ("ctrl_"+$struc_name) ("grp_ctrl_"+$struc_name);
+       int $grp_rotateZ = `getAttr ("grp_ctrl_"+$struc_name+".rotateZ") `;
+       //setAttr ("grp_ctrl_"+$struc_name+".rotateZ")  ( $grp_rotateZ +90 );
+       setAttr ("ctrl_"+$struc_name+".t") 0 0 0;
+       setAttr ("ctrl_"+$struc_name+".r") 0 0 0;
+
+}
+
+string $selection_list[] = `ls -sl`;
+
+snake_struc( $selection_list[0], "spine" );
