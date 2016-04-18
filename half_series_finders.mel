@@ -1,0 +1,58 @@
+proc int[] half_series_finders( int $find , int $offset , int $left_value , int $right_value )
+{   
+  
+  int $remainder = ( (  $right_value - $left_value + 1 )%2 ); 
+  int $half_value = ( ( ( (  $right_value - $left_value + $remainder + 1 )/2 ) ) );
+  print( $left_value+"  "+$right_value+"  ( Half:"+$half_value+" Remainder:"+$remainder+"  Find:"+$find+"  Rest:"+( ( $remainder )? ($half_value) :($half_value+1) )+" Offset:"+$offset+" )\n" );
+  
+  if( $remainder )
+  {
+        if( $find <= $half_value + $left_value - 1 )
+        {
+                if( ( $find == $half_value + $left_value - 1 ) )  
+                {                                
+                  int $return_values[]={ $left_value , $right_value };
+                  return $return_values;
+                }
+                else
+                {                 
+                  int $return_values[] = half_series_finders( $find , $offset , $left_value , ( $half_value + $left_value - 1 ) );  
+                  return $return_values;  
+                }
+         }
+         else
+         {
+                  int $return_values[] = half_series_finders( $find , $offset , ( $half_value + $left_value - 1 )  , $right_value );  
+                  return $return_values;
+                       
+         }
+  }
+  else
+  {
+      if( $find <= ( $half_value + $left_value ) )
+      {
+                if( ( ( $find == ( $half_value + $left_value -1 ) ) || ( $find == ( $half_value + $left_value  ) ) ) )  
+                {
+                  int $return_values[]={ $left_value , $right_value };
+                  return $return_values;
+                }
+                else
+                {                  
+                  int $return_values[] = half_series_finders( $find , $offset , $left_value ,  ( $half_value + $left_value - 1 ) );
+                  return $return_values; 
+                }          
+      }
+         else
+         { 
+                int $return_values[] = half_series_finders( $find , $offset , ( $half_value + $left_value )  , $right_value );  
+                return $return_values;      
+         }      
+  }
+}
+
+int $amount = 20;
+int $offset = $amount/2;
+
+int $values_list[] = half_series_finders( 9  , $offset , 1 , $amount );
+
+print $values_list;
